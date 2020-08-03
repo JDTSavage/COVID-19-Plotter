@@ -3,7 +3,7 @@
 A discord bot that provides plots and reports of COVID-19 data.
 
 ### Dependencies:
-discord.py, pandas, matplotlib
+discord.py, pandas, numpy, matplotlib
 
 ### Setup: 
 
