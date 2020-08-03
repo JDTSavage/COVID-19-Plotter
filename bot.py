@@ -78,7 +78,7 @@ def main():
                     states = []
                     for i in range(0, len(state_names)):
                         # Check for any matching state names from the message string
-                        if (state_names[i] in query_str.title()) and (state_names[i] not in states):
+                        if (state_names[i].title() in query_str.title()) and (state_names[i] not in states):
                             states.append(state_names[i])
 
                     fig, ax = plt.subplots()  # Set up plot
