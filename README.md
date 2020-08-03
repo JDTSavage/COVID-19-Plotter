@@ -9,8 +9,8 @@ discord.py, pandas, numpy, matplotlib
 
 Clone this repository.
 After creating a bot account on the Discord developer portal, 
-take the bot token and put it in *.env.txt* immediately after 
-"=" in the line "DISCORD_TOKEN=". Rename *.env.txt* to *.env*.
+take the bot token and put it in *env.txt* immediately after 
+"=" in the line "DISCORD_TOKEN=". Rename *env.txt* to *.env*.
 
 Run *bot.py* to start the bot. After inviting the bot to your server, 
 you can communicate with the bot as follows:
