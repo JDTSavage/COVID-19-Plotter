@@ -15,14 +15,15 @@ take the bot token and put it in *env.txt* immediately after
 Run *bot.py* to start the bot. After inviting the bot to your server, 
 you can communicate with the bot as follows:
 
-Beginning a message with ~covid indicates that the message
+Beginning a message with *~covid* indicates that the message
 contains a command for the bot.
 
-- For help, type help next.
-- For a report, type report.
-- For a total plot, type total in the message.
-- For a daily plot, type daily
-- Finally, type the name of the country you wish to see results for.
+- For help, type *help* next.
+- For a *report*, type report.
+- For a total plot, type *total* in the message.
+- For a daily plot, type *daily*
+- If you wish to see data on deaths instead of confirmed cases, type *deaths*
+- Type the name of the country you wish to see results for.
 - To see state level data for the United States of America, type up to 10 state names at the end of the message.
 
 Example: ~covid total US Oregon Maine Florida

@@ -42,7 +42,9 @@ def main():
                          "/csse_covid_19_daily_reports_us/" + date + ".csv "
     # US cases link
     url_us_cases_ts = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data" \
-                      "/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv "
+                      "/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv"
+    url_us_deaths_ts = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data" \
+                       "/csse_covid_19_time_series/time_series_covid19_deaths_US.csv"
 
     client = discord.Client()  # Begin the bot client
 
@@ -68,9 +70,17 @@ def main():
 
             elif "total" in query_str or "daily" in query_str:
                 if "us" in query_str or "united states" in query_str:
+                    url = ""
+                    stat = ""
+                    if "deaths" in query_str:
+                        url = url_us_deaths_ts
+                        stat = "deaths"
+                    else:
+                        url = url_us_cases_ts
+                        stat = "cases"
 
                     # Read in data
-                    data = pd.read_csv(url_us_cases_ts, error_bad_lines=False)
+                    data = pd.read_csv(url, error_bad_lines=False)
                     start_date, last_date = mp.get_start_end_dates(
                         data=data)  # First and last date containing case data
 
@@ -92,11 +102,11 @@ def main():
                         if "total" in query_str and len(states) == 1:
                             # Only one state plot requested, plot and send message.
                             mp.plot_total(data=data, location=state_sum, state=states[i],
-                                          start_date=start_date, last_date=last_date, ax=ax)
+                                          start_date=start_date, last_date=last_date, ax=ax, stat=stat)
                             mp.customize_plot(data=data, last_date=last_date,
                                               start_date=start_date, ax=ax)
                             await mp.send_total(data=data, location=state_sum, state=states[i],
-                                                start_date=start_date, message=message)
+                                                start_date=start_date, message=message, stat=stat)
                             SENT = True
 
                         elif "daily" in query_str:
@@ -106,22 +116,22 @@ def main():
                                                                                      state=states[i],
                                                                                      start_date=start_date,
                                                                                      last_date=last_date,
-                                                                                     ax=ax)
+                                                                                     ax=ax, stat=stat)
                             mp.customize_plot(data=data, last_date=last_date,
                                               start_date=start_date, ax=ax)
                             await mp.send_daily(data=data, state=states[i], cases=cases_ytdy,
                                                 avg=avg_ytdy, max_cases=max_cases, ind=max_ind,
-                                                message=message)
+                                                message=message, stat=stat)
                             SENT = True
 
                     if "total" in query_str and len(states) > 1:
                         # Different method call since multiple regions will be plotted on same plot
                         mp.plot_totals(data=data, locations=states_summed, states=states,
-                                       start_date=start_date, last_date=last_date, ax=ax)
+                                       start_date=start_date, last_date=last_date, ax=ax, stat=stat)
                         mp.customize_plot(data=data, last_date=last_date,
                                           start_date=start_date, ax=ax)
                         await mp.send_totals(locations=states_summed, states=states,
-                                             message=message)
+                                             message=message, stat=stat)
                         SENT = True
 
                     # Remove data from memory

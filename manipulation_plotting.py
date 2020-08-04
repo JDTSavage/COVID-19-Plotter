@@ -25,17 +25,18 @@ def get_loc_data(name, start_date, last_date, data):
     return loc_sum
 
 
-def plot_total(data, location, state, start_date, last_date, ax):
+def plot_total(data, location, state, start_date, last_date, ax, stat):
     """Plots total cases for a single region"""
     ax.plot(data.columns[data.columns.get_loc(start_date):(data.columns.get_loc(last_date) + 1)],
             location,
             color="red")
-    ax.set(title="Total Reported Covid Cases for %s \nsince the first US case" % state.title(),
+    title = "Total Reported COVID-19 %s for %s \nsince the first US case" % (stat, state.title())
+    ax.set(title=title.title(),
            xlabel="Date",
-           ylabel="Total Cases")
+           ylabel="Total %s" % stat.title())
 
 
-def plot_totals(data, locations, states, start_date, last_date, ax):
+def plot_totals(data, locations, states, start_date, last_date, ax, stat):
     """Plots total cases for multiple regions"""
     evenly_spaced_interval = np.linspace(0, 1, len(states))  # For color map
     colors = [plt.cm.get_cmap("tab20")(x) for x in evenly_spaced_interval]
@@ -48,13 +49,14 @@ def plot_totals(data, locations, states, start_date, last_date, ax):
     for i in range(0, len(states) - 1):
         states_names += states[i] + ", "
     states_names += "and " + states[-1]
-    ax.set(title="\n".join(wrap("Total Reported Covid Cases for %s since the first US case" % states_names, 60)),
+    title = "Total Reported Covid %s for %s since the first US case" % (stat, states_names)
+    ax.set(title="\n".join(wrap(title.title(), 60)),
            xlabel="Date",
-           ylabel="Total Cases")
+           ylabel="Total %s" % stat.title())
     plt.legend()
 
 
-def plot_daily(data, location, state, start_date, last_date, ax):
+def plot_daily(data, location, state, start_date, last_date, ax, stat):
     """Plots daily cases for a region"""
     daily = np.array(location)  # numpy.append(0, state_sum)
     daily = np.append(location[0], np.subtract(daily[1:(len(location))], daily[0:(len(location) - 1)]))
@@ -74,10 +76,10 @@ def plot_daily(data, location, state, start_date, last_date, ax):
     ax.plot(data.columns[data.columns.get_loc(start_date):(data.columns.get_loc(last_date) + 1)],
             rolling_avg,
             color="red")
-
-    ax.set(title="Daily Reported Covid Cases for %s \nsince the first US case" % state.title(),
+    title = "Daily Reported Covid %s for %s \nsince the first US case" % (stat, state.title())
+    ax.set(title=title.title(),
            xlabel="Date",
-           ylabel="Number of Cases")
+           ylabel="Number of %s" % stat)
 
     return daily[-1], rolling_avg[-1], np.max(daily), np.where(daily == np.max(daily))[0][0]
 
@@ -102,41 +104,48 @@ def customize_plot(data, last_date, start_date, ax):
     plt.close()
 
 
-async def send_total(data, location, state, start_date, message):
+async def send_total(data, location, state, start_date, message, stat):
     """Sends message with plot of total cases for a single region"""
     start_ind = data.columns.get_loc(start_date)
     first_date = str(dt.datetime.strptime(data.columns[start_ind:][np.argmax(location > 0)], '%m/%d/%y').strftime(
         '%b %d, %Y').lstrip("0").replace(" 0", " "))
     async with message.channel.typing():
-        await message.channel.send("%s has reached %s cases since the first recorded case there on %s."
+        await message.channel.send("%s has reached %s %s since the first recorded %s there on %s."
                                    % (state.title(),
                                       f"{location[-1]:,d}",
+                                      stat,
+                                      stat[:len(stat)-1],
                                       first_date),
                                    file=discord.File("covid_plot.png"))
 
 
-async def send_totals(locations, states, message):
+async def send_totals(locations, states, message, stat):
     """Sends message with plot of total cases for multiple regions"""
-    response = """Since the first recorded case in the United States: \n"""
+    response = """Since the first recorded %s in the United States: \n""" % stat[:len(stat) - 1]
     for i in range(0, len(states) - 1):
-        response += "%s has reached %s cases\n" % (states[i],
-                                                   f"{locations[i][-1]:,d}")
-    response += "%s has reached %s cases\n" % (states[-1],
-                                               f"{locations[-1][-1]:,d}")
+        response += "%s has reached %s %s\n" % (states[i],
+                                                   f"{locations[i][-1]:,d}",
+                                                stat.title())
+    response += "%s has reached %s %s\n" % (states[-1],
+                                               f"{locations[-1][-1]:,d}",
+                                            stat.title())
     async with message.channel.typing():
         await message.channel.send(response,
                                    file=discord.File("covid_plot.png"))
 
 
-async def send_daily(data, state, cases, avg, max_cases, ind, message):
+async def send_daily(data, state, cases, avg, max_cases, ind, message, stat):
     """Sends message for plot of daily cases"""
     async with message.channel.typing():
         await message.channel.send(
-            "%s had %s new cases yesterday. The 7-day average number of new cases is %s. \nThe max number of cases in "
+            "%s had %s new %s yesterday. The 7-day average number of new %s is %s. \nThe max number of %s in "
             "a day was %s, on %s "
             % (state.title(),
                f"{cases:,d}",
+               stat,
+               stat,
                f"{avg:,.0f}",
+               stat,
                f"{max_cases:,d}",
                str(dt.datetime.strptime(data.columns[ind + 11 - 6], '%m/%d/%y').strftime('%b %d, %Y').lstrip(
                    "0").replace(" 0", " "))),
