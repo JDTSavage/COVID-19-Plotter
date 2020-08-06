@@ -4,8 +4,7 @@
 # Data plotted from JHU GitHub repository:
 # COVID-19 Data Repository by the Center for Systems Science and Engineering (CSSE) at Johns Hopkins University
 # https://github.com/CSSEGISandData/COVID-19
-
-
+import asyncio
 from urllib.error import HTTPError
 import discord
 import os
@@ -33,6 +32,8 @@ def main():
     try:
         url_us_reports = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data" \
                          "/csse_covid_19_daily_reports_us/" + date + ".csv "
+        url_global_reports = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data" \
+                             "/csse_covid_19_daily_reports/" + date + ".csv"
         data = pd.read_csv(url_us_reports, error_bad_lines=False)
     except HTTPError:
         delta += 1
@@ -40,11 +41,19 @@ def main():
         date = date.strftime('%m-%d-%Y')
         url_us_reports = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data" \
                          "/csse_covid_19_daily_reports_us/" + date + ".csv "
+        url_global_reports = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data" \
+                             "/csse_covid_19_daily_reports/" + date + ".csv"
     # US cases link
     url_us_cases_ts = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data" \
                       "/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv"
     url_us_deaths_ts = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data" \
                        "/csse_covid_19_time_series/time_series_covid19_deaths_US.csv"
+    url_global_cases_ts = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data" \
+                          "/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv"
+    url_global_deaths_ts = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data" \
+                           "/csse_covid_19_time_series/time_series_covid19_deaths_global.csv"
+    url_recovered_ts = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data" \
+                       "/csse_covid_19_time_series/time_series_covid19_recovered_global.csv"
 
     client = discord.Client()  # Begin the bot client
 
@@ -68,8 +77,21 @@ def main():
                 await mp.report(message=message, top_confirmed=top_confirmed, top_deaths=top_deaths)
                 SENT = True
 
+            elif "location" in query_str:
+                auth = message.author
+                async with message.author.typing():
+                    await message.author.send("""For a list of supported Countries, type 'Countries'"""
+                                               "\nFor the list of supported US states and territories, type 'States'.")
+                try:
+                    msg = await client.wait_for('message', timeout=60, check=lambda message: message.author == auth)
+                    SENT = await mp.request_locs(msg)
+                except asyncio.TimeoutError:
+                    async with message.author.typing():
+                        await message.author.send("You didn't enter anything.")
+
             elif "total" in query_str or "daily" in query_str:
-                if "us" in query_str or "united states" in query_str:
+                if "states" in query_str:
+                    colname = "Province_State"
                     url = ""
                     stat = ""
                     if "deaths" in query_str:
@@ -81,10 +103,10 @@ def main():
 
                     # Read in data
                     data = pd.read_csv(url, error_bad_lines=False)
-                    start_date, last_date = mp.get_start_end_dates(
+                    start_date, last_date, start_ind = mp.get_start_end_dates(
                         data=data)  # First and last date containing case data
 
-                    state_names = list(data["Province_State"])
+                    state_names = list(data[colname])
                     states = []
                     for i in range(0, len(state_names)):
                         # Check for any matching state names from the message string
@@ -96,7 +118,7 @@ def main():
                     for i in range(0, len(states)):
                         # Sum sub-region level data for the state
                         state_sum = mp.get_loc_data(name=states[i], start_date=start_date,
-                                                    last_date=last_date, data=data)
+                                                    last_date=last_date, data=data, colname=colname)
                         states_summed.append(state_sum)
 
                         if "total" in query_str and len(states) == 1:
@@ -121,7 +143,7 @@ def main():
                                               start_date=start_date, ax=ax)
                             await mp.send_daily(data=data, state=states[i], cases=cases_ytdy,
                                                 avg=avg_ytdy, max_cases=max_cases, ind=max_ind,
-                                                message=message, stat=stat)
+                                                message=message, stat=stat, start_ind=start_ind)
                             SENT = True
 
                     if "total" in query_str and len(states) > 1:
@@ -139,6 +161,76 @@ def main():
                     del states_summed
                     gc.collect()
 
+                if not SENT:
+                    colname = "Country/Region"
+                    url = ""
+                    stat = ""
+                    if "deaths" in query_str:
+                        url = url_global_deaths_ts
+                        stat = "deaths"
+                    else:
+                        url = url_global_cases_ts
+                        stat = "cases"
+
+                    data = pd.read_csv(url, error_bad_lines=False)
+                    start_date, last_date, start_ind = mp.get_start_end_dates(
+                        data=data)  # First and last date containing case data
+                    country_names = list(data[colname])
+                    countries = []
+                    for i in range(0, len(country_names)):
+                        # Check for any matching state names from the message string
+                        if (country_names[i].title() in query_str.title()) and (country_names[i] not in countries):
+                            countries.append(country_names[i])
+
+                    fig, ax = plt.subplots()  # Set up plot
+                    countries_summed = []  # Store summed states if multiple states are requested
+                    for i in range(0, len(countries)):
+                        # Sum sub-region level data for the state
+                        state_sum = mp.get_loc_data(name=countries[i], start_date=start_date,
+                                                    last_date=last_date, data=data, colname=colname)
+                        countries_summed.append(state_sum)
+
+                        if "total" in query_str and len(countries) == 1:
+                            # Only one state plot requested, plot and send message.
+                            mp.plot_total(data=data, location=state_sum, state=countries[i],
+                                          start_date=start_date, last_date=last_date, ax=ax, stat=stat)
+                            mp.customize_plot(data=data, last_date=last_date,
+                                              start_date=start_date, ax=ax)
+                            await mp.send_total(data=data, location=state_sum, state=countries[i],
+                                                start_date=start_date, message=message, stat=stat)
+                            SENT = True
+
+                        elif "daily" in query_str:
+                            # New plot for each region's daily results.
+                            fig, ax = plt.subplots()
+                            cases_ytdy, avg_ytdy, max_cases, max_ind = mp.plot_daily(data=data, location=state_sum,
+                                                                                     state=countries[i],
+                                                                                     start_date=start_date,
+                                                                                     last_date=last_date,
+                                                                                     ax=ax, stat=stat)
+                            mp.customize_plot(data=data, last_date=last_date,
+                                              start_date=start_date, ax=ax)
+                            await mp.send_daily(data=data, state=countries[i], cases=cases_ytdy,
+                                                avg=avg_ytdy, max_cases=max_cases, ind=max_ind,
+                                                message=message, stat=stat, start_ind=start_ind)
+                            SENT = True
+
+                    if "total" in query_str and len(countries) > 1:
+                        # Different method call since multiple regions will be plotted on same plot
+                        mp.plot_totals(data=data, locations=countries_summed, states=countries,
+                                       start_date=start_date, last_date=last_date, ax=ax, stat=stat)
+                        mp.customize_plot(data=data, last_date=last_date,
+                                          start_date=start_date, ax=ax)
+                        await mp.send_totals(locations=countries_summed, states=countries,
+                                             message=message, stat=stat)
+                        SENT = True
+
+                    # Remove data from memory
+                    del data
+                    del countries_summed
+                    gc.collect()
+
+
             elif "help" in query_str:
                 # Send help message
                 await mp.send_help(message)
@@ -150,7 +242,7 @@ def main():
                 async with message.channel.typing():
                     await message.channel.send(
                         "You have entered a request with an improper format. Type '~covid help' for "
-                        "useage info.")
+                        "useage info, or ~covid locations for supported locations")
 
     client.run(TOKEN)  # Bot token is entered here
 

@@ -5,6 +5,7 @@
 import datetime as dt
 from textwrap import wrap
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import discord
 
@@ -14,13 +15,14 @@ def get_start_end_dates(data):
     start_date = data.filter(regex='\\d+/\\d+/\\d\\d', axis="columns").columns[0]
     last_date = dt.datetime.strptime(data.columns[-1], '%m/%d/%y').strftime(
         '%m/%#d/%y').lstrip("0").replace(" 0", " ")
-    return start_date, last_date
+    start_ind = data.columns.get_loc(start_date)
+    return start_date, last_date, start_ind
 
 
-def get_loc_data(name, start_date, last_date, data):
+def get_loc_data(name, start_date, last_date, data, colname):
     """Finds province/state location data and sums columns for that location,
     returning an array of length start_date:last_date"""
-    loc_rows = data.index[data['Province_State'] == name].tolist()
+    loc_rows = data.index[data[colname] == name].tolist()
     loc_sum = data.loc[loc_rows, start_date:last_date].sum(axis=0)
     return loc_sum
 
@@ -114,7 +116,7 @@ async def send_total(data, location, state, start_date, message, stat):
                                    % (state.title(),
                                       f"{location[-1]:,d}",
                                       stat,
-                                      stat[:len(stat)-1],
+                                      stat[:len(stat) - 1],
                                       first_date),
                                    file=discord.File("covid_plot.png"))
 
@@ -124,17 +126,17 @@ async def send_totals(locations, states, message, stat):
     response = """Since the first recorded %s in the United States: \n""" % stat[:len(stat) - 1]
     for i in range(0, len(states) - 1):
         response += "%s has reached %s %s\n" % (states[i],
-                                                   f"{locations[i][-1]:,d}",
+                                                f"{locations[i][-1]:,d}",
                                                 stat.title())
     response += "%s has reached %s %s\n" % (states[-1],
-                                               f"{locations[-1][-1]:,d}",
+                                            f"{locations[-1][-1]:,d}",
                                             stat.title())
     async with message.channel.typing():
         await message.channel.send(response,
                                    file=discord.File("covid_plot.png"))
 
 
-async def send_daily(data, state, cases, avg, max_cases, ind, message, stat):
+async def send_daily(data, state, cases, avg, max_cases, ind, message, stat, start_ind):
     """Sends message for plot of daily cases"""
     async with message.channel.typing():
         await message.channel.send(
@@ -147,7 +149,7 @@ async def send_daily(data, state, cases, avg, max_cases, ind, message, stat):
                f"{avg:,.0f}",
                stat,
                f"{max_cases:,d}",
-               str(dt.datetime.strptime(data.columns[ind + 11 - 6], '%m/%d/%y').strftime('%b %d, %Y').lstrip(
+               str(dt.datetime.strptime(data.columns[ind + start_ind - 6], '%m/%d/%y').strftime('%b %d, %Y').lstrip(
                    "0").replace(" 0", " "))),
             file=discord.File("covid_plot.png"))
 
@@ -170,17 +172,79 @@ async def report(message, top_confirmed, top_deaths):
 
 async def send_help(message):
     """Sends help information to the user"""
-    async with message.channel.typing():
-        await message.channel.send("""COVID-19 Visualizer currently produces plots of daily and """
-                                   "total case counts for US states and territories, as well as reporting "
-                                   "which states are doing the worst. "
-                                   "\n\nUSAGE:"
-                                   "\nTo request information from the bot, type '~covid' at the beginning of "
-                                   "your message. "
-                                   "\nFor a plot of daily cases, type 'daily' after this"
-                                   "\nFor US cases, type 'US' in your message."
-                                   "\nFor states, type as many state names as you wish in any order and wait "
-                                   "for the results to appear. "
-                                   "\nExample: \n~covid total US New Hampshire Vermont"
-                                   "\n\nFor a report of the top worst states by total cases and death toll, "
-                                   "type '~covid report'")
+    msg = """COVID-19 Visualizer currently produces plots of daily and """ \
+          "total case and death counts for countries and US states and territories, as well as " \
+          "which US states are doing the worst. " \
+          "\n\nUSAGE:" \
+          "\nTo request information from the bot, type *~covid* at the beginning of " \
+          "your message. " \
+          "\nFor a plot of daily cases, type *daily* after this" \
+          "\nType the name of the country you wish to see data for" \
+          "\nFor US states, type states and as many state names as you wish" \
+          "\nExample: \n*~covid total US New Hampshire Vermont*" \
+          "\n*~covid daily Zimbabwe*" \
+          "\n\nFor a report of the top worst states by total cases and death toll, " \
+          "type *~covid report*" \
+          "\nTo see supported locations, type *~covid locations* and follow the prompts in " \
+          "your DMs"
+    async with message.author.typing():
+        embed = discord.Embed(
+            title="COVID-19 Visualizer Help",
+            colour=discord.Colour.blue()
+        )
+        embed.set_footer(text=msg)
+        await message.author.send(embed=embed)
+
+
+async def request_locs(message):
+    locs = []
+    msg = ""
+    msg_cont = ""
+    msg_title = ""
+    if "countries" in message.content.lower():
+        url = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data" \
+              "/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv"
+        data = pd.read_csv(url, error_bad_lines=False)
+        locs = np.sort(pd.unique(data["Country/Region"]))
+        del data
+        msg_title = "Supported Countries/Regions"
+    elif "states" in message.content.lower():
+        url = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data" \
+              "/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv"
+        data = pd.read_csv(url, error_bad_lines=False)
+        locs = np.sort(pd.unique(data["Province_State"]))
+        del data
+        msg_title = "Supported States/Territories"
+    else:
+        async with message.channel.typing():
+            await message.author.send("Invalid response. Try again.")
+
+    i = 0
+    while len(msg + locs[i + 1]) < 2000 and i < len(locs) - 2:
+        msg += locs[i] + ", "
+        i += 1
+    if i < len(msg) - 1:
+        while len(msg_cont + locs[i + 1]) < 2000 and i < len(locs) - 2:
+            msg_cont += locs[i] + ", "
+            i += 1
+    if len(msg + locs[-1]) < 2000:
+        msg += locs[-1]
+        i += 1
+    else:
+        msg_cont += locs[-1]
+
+    async with message.author.typing():
+        embed = discord.Embed(
+            title=msg_title,
+            colour=discord.Colour.blue(),
+        )
+        embed.set_footer(text=msg)
+        await message.author.send(embed=embed)
+        if len(msg_cont) > 0:
+            embed = discord.Embed(
+                colour=discord.Colour.blue()
+            )
+            embed.set_footer(text=msg_cont)
+            await message.author.send(embed)
+
+    return True
