@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.env
+.idea
+Data_Analyzer.R
+Data_Access.py
+covid_plot.png

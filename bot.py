@@ -65,23 +65,42 @@ def main():
     async def on_message(message):
         # message contains discord message information
         if message.content.startswith("~covid"):  # Check for command message
-            print("COVID PLOTTING REQUEST")
+            print("REQUEST RECEIVED")
             SENT = False
             query_str = message.content.lower()  # Get message in string
+            if "united states" in query_str:
+                query_str = query_str.replace("united states", "the united states")
 
             # Parse request and plot
+            # if "colby" in query_str:
+            #     data = pd.read_csv("ColbyCovid.csv")
+            #
+
             if "report" in query_str:
-                data = pd.read_csv(url_us_reports, error_bad_lines=False)  # Read in most recent daily report
-                top_confirmed = data.nlargest(5, "Confirmed")
-                top_deaths = data.nlargest(5, "Deaths")
-                await mp.report(message=message, top_confirmed=top_confirmed, top_deaths=top_deaths)
-                SENT = True
+                auth = message.author
+                async with message.channel.typing():
+                    await message.channel.send("""I can give you a report of COVID-19 statistics for countries or """
+                                               "US states. \nIf you want to see a report for countries, type"
+                                               " 'countries.'"
+                                               "\nIf you want to see a report for US states, type 'states.'")
+                try:
+                    msg = await client.wait_for('message', timeout=60, check=lambda message: message.author == auth)
+                    if "countries" in msg.content.lower():
+                        SENT = await mp.report(message=message, url=url_global_reports, glob=True, client=client)
+                    elif "states" in msg.content.lower():
+                        SENT = await mp.report(message=message, url=url_us_reports, glob=False, client=client)
+                    else:
+                        async with message.channel.typing():
+                            await message.channel.send("Invalid response. Try again.")
+                except asyncio.TimeoutError:
+                    async with message.channel.typing():
+                        await message.channel.send("You didn't enter anything.")
 
             elif "location" in query_str:
                 auth = message.author
                 async with message.author.typing():
                     await message.author.send("""For a list of supported Countries, type 'Countries'"""
-                                               "\nFor the list of supported US states and territories, type 'States'.")
+                                              "\nFor the list of supported US states and territories, type 'States'.")
                 try:
                     msg = await client.wait_for('message', timeout=60, check=lambda message: message.author == auth)
                     SENT = await mp.request_locs(msg)
@@ -90,7 +109,7 @@ def main():
                         await message.author.send("You didn't enter anything.")
 
             elif "total" in query_str or "daily" in query_str:
-                if "states" in query_str:
+                if "us" in query_str:
                     colname = "Province_State"
                     url = ""
                     stat = ""
@@ -107,6 +126,10 @@ def main():
                         data=data)  # First and last date containing case data
 
                     state_names = list(data[colname])
+
+                    mp.data_clean(state_names)
+                    data[colname] = state_names
+
                     states = []
                     for i in range(0, len(state_names)):
                         # Check for any matching state names from the message string
@@ -176,6 +199,10 @@ def main():
                     start_date, last_date, start_ind = mp.get_start_end_dates(
                         data=data)  # First and last date containing case data
                     country_names = list(data[colname])
+
+                    mp.data_clean(country_names)
+                    data[colname] = country_names
+
                     countries = []
                     for i in range(0, len(country_names)):
                         # Check for any matching state names from the message string
@@ -243,6 +270,8 @@ def main():
                     await message.channel.send(
                         "You have entered a request with an improper format. Type '~covid help' for "
                         "useage info, or ~covid locations for supported locations")
+            else:
+                plt.close()
 
     client.run(TOKEN)  # Bot token is entered here
 

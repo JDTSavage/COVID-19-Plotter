@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import discord
+import asyncio
 
 
 def get_start_end_dates(data):
@@ -72,7 +73,7 @@ def plot_daily(data, location, state, start_date, last_date, ax, stat):
     rolling_avg = [0] * len(daily)
     daily = np.append([0] * 6, daily)
     for i in range(0, len(rolling_avg)):
-        rolling_avg[i] = np.mean(daily[i:(i + 6)])
+        rolling_avg[i] = np.mean(daily[i:(i + 7)])
 
     # Plot average data
     ax.plot(data.columns[data.columns.get_loc(start_date):(data.columns.get_loc(last_date) + 1)],
@@ -91,12 +92,25 @@ def customize_plot(data, last_date, start_date, ax):
     plt.setp(ax.get_xticklabels(), rotation=45)
     start = 0
     end = data.columns.get_loc(last_date) - data.columns.get_loc(start_date)
-    ax.xaxis.set_ticks(np.append(np.arange(start, end, 28), end))
-    date_labels = data.filter(regex='\\d+/\\d+/\\d\\d', axis="columns").columns[
-        np.append(np.arange(start, end, 28), end)]
+    trash_idxs = data.columns.size - end - 1
+    date_labels = data.filter(regex='\\d+/1/\\d\\d', axis="columns").columns
+
+    date_labels = np.insert(date_labels, 0, start_date)
+    date_labels = np.append(date_labels, last_date)
+
+    date_idxs = np.where(np.isin(np.array(data.columns), np.array(date_labels)) == True)[0] - trash_idxs
     date_labels = [
         dt.datetime.strptime(date, '%m/%d/%y').strftime('%b %d, %y').lstrip("0").replace(" 0", " ")
         for date in date_labels]
+
+    if date_idxs[1] < 14:
+        date_labels = np.delete(date_labels, 1)
+        date_idxs = np.delete(date_idxs, 1)
+    if (date_idxs[-1] - date_idxs[-2] < 14):
+        date_labels = np.delete(date_labels, -2)
+        date_idxs = np.delete(date_idxs, -2)
+
+    ax.xaxis.set_ticks(date_idxs) # np.append(date_idxs, end))
     ax.set_xticklabels(date_labels)
     plt.xticks(fontsize=7.5)
     ax.set_ylim(ymin=0)
@@ -104,6 +118,17 @@ def customize_plot(data, last_date, start_date, ax):
     plt.tight_layout()
     plt.savefig("covid_plot.png")
     plt.close()
+
+
+def data_clean(lst):
+    """Cleans up JHU data for confusing region names
+    Affected region names: US, 'Korea, South'"""
+    if "Korea, South" in lst:
+        index = lst.index("Korea, South")
+        lst[index] = "South Korea"
+    if "US" in lst:
+        index = lst.index("US")
+        lst[index] = "The United States"
 
 
 async def send_total(data, location, state, start_date, message, stat):
@@ -154,20 +179,39 @@ async def send_daily(data, state, cases, avg, max_cases, ind, message, stat, sta
             file=discord.File("covid_plot.png"))
 
 
-async def report(message, top_confirmed, top_deaths):
+async def report(message, url, glob, client):
     """Sends a report of the top worst states by cases and deaths"""
+    reactions = ['\u0031\u20E3', '\u0032\u20E3', '\u0033\u20E3', '\u0034\u20E3', '\u0035\u20E3']
+    embed = discord.Embed(
+        title="Choose a statistic to report".title(),
+        colour=discord.Colour.blue(),
+        description="""\u0031\u20E3 **Confirmed cases**"""
+                    "\n\u0032\u20E3 **Deaths**"
+                    "\n\u0033\u20E3 **Deaths per capita**"
+                    "\n\u0034\u20E3 **Cases per capita**"
+                    "\n\u0035\u20E3 **Tests per capita**"
+    )
     async with message.channel.typing():
-        cases_str = """The top 5 worst US states/territories by confirmed case count are:"""
-        for i in range(0, 5):
-            cases_str = cases_str + "\n     %s with %s confirmed cases" % (top_confirmed["Province_State"].iloc[i],
-                                                                           f'{top_confirmed["Confirmed"].iloc[i]:,d}')
-        deaths_str = """The top 5 worst US states/territories by death toll are:"""
-        for i in range(0, 5):
-            deaths_str = deaths_str + "\n     %s with %s deaths" % (top_deaths["Province_State"].iloc[i],
-                                                                    f'{top_deaths["Deaths"].iloc[i]:,d}')
+        auth = message.author
+        msg = await message.channel.send("**Hello**", embed=embed)
+        for emoji in reactions:
+            await msg.add_reaction(emoji)
 
-        await message.channel.send(cases_str)
-        await message.channel.send(deaths_str)
+        try:
+            reaction, user = await client.wait_for('reaction_add', timeout=60, check=lambda r, u: u == auth and r.message.id == msg.id and r.emoji in reactions)
+            print(reaction.emoji in reactions)
+            # data = pd.read_csv(url, error_bad_lines=False)
+            # if glob:
+            #     data = data.groupby('Country_Region')[['Confirmed', 'Deaths']].sum().reset_index()
+            # top_deaths = data.nlargest(n=5, columns='Deaths')
+            # top_cases = data.nlargest(n=5, columns='Confirmed')
+            # print(top_deaths)
+            # print(top_cases)
+        except asyncio.TimeoutError:
+            async with message.channel.typing():
+                await message.channel.send("You didn't enter anything.")
+
+    return True
 
 
 async def send_help(message):
@@ -181,7 +225,7 @@ async def send_help(message):
           "\nFor a plot of daily cases, type *daily* after this" \
           "\nType the name of the country you wish to see data for" \
           "\nFor US states, type states and as many state names as you wish" \
-          "\nExample: \n*~covid total US New Hampshire Vermont*" \
+          "\nExample: \n*~covid total states New Hampshire Vermont*" \
           "\n*~covid daily Zimbabwe*" \
           "\n\nFor a report of the top worst states by total cases and death toll, " \
           "type *~covid report*" \
@@ -190,9 +234,9 @@ async def send_help(message):
     async with message.author.typing():
         embed = discord.Embed(
             title="COVID-19 Visualizer Help",
-            colour=discord.Colour.blue()
+            colour=discord.Colour.blue(),
+            description=msg
         )
-        embed.set_footer(text=msg)
         await message.author.send(embed=embed)
 
 
@@ -216,7 +260,7 @@ async def request_locs(message):
         del data
         msg_title = "Supported States/Territories"
     else:
-        async with message.channel.typing():
+        async with message.author.typing():
             await message.author.send("Invalid response. Try again.")
 
     i = 0
@@ -237,14 +281,8 @@ async def request_locs(message):
         embed = discord.Embed(
             title=msg_title,
             colour=discord.Colour.blue(),
+            description=msg + " " + msg_cont
         )
-        embed.set_footer(text=msg)
         await message.author.send(embed=embed)
-        if len(msg_cont) > 0:
-            embed = discord.Embed(
-                colour=discord.Colour.blue()
-            )
-            embed.set_footer(text=msg_cont)
-            await message.author.send(embed)
 
     return True
