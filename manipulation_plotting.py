@@ -65,9 +65,11 @@ def plot_daily(data, location, state, start_date, last_date, ax, stat):
     daily = np.append(location[0], np.subtract(daily[1:(len(location))], daily[0:(len(location) - 1)]))
     ax.bar(data.columns[data.columns.get_loc(start_date):(data.columns.get_loc(last_date) + 1)],
            daily,
-           color="lightblue",
+           color="darkgreen",
            edgecolor="black",
-           linewidth=0.5)
+           linewidth=0.0,
+           width=0.6,
+           align='center')
 
     # Calculate rolling average of last 7 days worth of cases.
     rolling_avg = [0] * len(daily)
@@ -181,38 +183,123 @@ async def send_daily(data, state, cases, avg, max_cases, ind, message, stat, sta
 
 async def report(message, url, glob, client):
     """Sends a report of the top worst states by cases and deaths"""
-    reactions = ['\u0031\u20E3', '\u0032\u20E3', '\u0033\u20E3', '\u0034\u20E3', '\u0035\u20E3']
-    embed = discord.Embed(
-        title="Choose a statistic to report".title(),
-        colour=discord.Colour.blue(),
-        description="""\u0031\u20E3 **Confirmed cases**"""
-                    "\n\u0032\u20E3 **Deaths**"
-                    "\n\u0033\u20E3 **Deaths per capita**"
-                    "\n\u0034\u20E3 **Cases per capita**"
-                    "\n\u0035\u20E3 **Tests per capita**"
-    )
-    async with message.channel.typing():
-        auth = message.author
-        msg = await message.channel.send("**Hello**", embed=embed)
-        for emoji in reactions:
-            await msg.add_reaction(emoji)
+    reactions = np.array(['\u0031\u20E3', '\u0032\u20E3', '\u0033\u20E3', '\u0034\u20E3', '\u0035\u20E3', '\u0036\u20E3'])
+    stats_dict = {
+        '\u0031\u20E3' : 'Confirmed',
+        '\u0032\u20E3' : "Deaths",
+        '\u0033\u20E3' : "Case/Fatality Ratio",
+        '\u0034\u20E3' : "Recovered",
+        '\u0035\u20E3' : "Active",
+        '\u0036\u20E3' : "Total_Test_Results"
+    }
+    stats_formatted = {
+        'Confirmed' : 'Confirmed Cases',
+        "Deaths" : 'Confirmed Deaths',
+        "Case/Fatality Ratio" : "Case Fatality Ratio",
+        "Recovered" : "Recovered Cases",
+        "Active" : "Active Cases",
+        "Total_Test_Results" : "Total Tests"
+    }
 
-        try:
-            reaction, user = await client.wait_for('reaction_add', timeout=60, check=lambda r, u: u == auth and r.message.id == msg.id and r.emoji in reactions)
-            print(reaction.emoji in reactions)
-            # data = pd.read_csv(url, error_bad_lines=False)
-            # if glob:
-            #     data = data.groupby('Country_Region')[['Confirmed', 'Deaths']].sum().reset_index()
-            # top_deaths = data.nlargest(n=5, columns='Deaths')
-            # top_cases = data.nlargest(n=5, columns='Confirmed')
-            # print(top_deaths)
-            # print(top_cases)
-        except asyncio.TimeoutError:
+    try:
+        if glob:
+            embed = discord.Embed(
+                title="Choose a statistic to report".title(),
+                colour=discord.Colour.blue(),
+                description="""%s **Confirmed cases**"""
+                            "\n%s **Confirmed Deaths**"
+                            "\n%s **Case/Fatality Ratio**"
+                            "\n%s **Recovered Cases**"
+                            "\n%s **Active Cases**" % (reactions[0], reactions[1], reactions[2], reactions[3],
+                                                       reactions[4])
+            )
+
             async with message.channel.typing():
-                await message.channel.send("You didn't enter anything.")
+                auth = message.author
+                msg = await message.channel.send("**Global Statistics**", embed=embed)
+                for emoji in reactions:
+                    await msg.add_reaction(emoji)
+
+            reaction, user = await client.wait_for('reaction_add', timeout=60, check=lambda r, u: u == auth and
+                                                                                                  r.message.id == msg.id and r.emoji in reactions)
+            stat_column = stats_dict[reaction.emoji]
+            data = pd.read_csv(url, error_bad_lines=False)
+
+            data = data.groupby('Country_Region')[['Confirmed','Deaths', 'Recovered','Active']].sum().reset_index()
+            case_fatality = data["Deaths"]/data['Confirmed']
+            data['Case/Fatality Ratio'] = case_fatality
+            stats = data.nlargest(n=5, columns=stat_column)
+            low_stats = data.nsmallest(n=5, columns=stat_column)
+
+            async with message.channel.typing():
+                str = "Ranked by %s, the 5 countries with the highest statistic for this are:" % stats_formatted[stat_column]
+                for row in range(stats.shape[0]):
+                    nstr = "\n%s with %s" % (np.array(stats['Country_Region'])[row], f"{np.array(stats[stat_column])[row]:,.1f}")
+                    str = str + nstr
+                str = str + "\n\nThe 5 countries with the lowest statistic for this are:"
+                for row in range(stats.shape[0]):
+                    nstr = "\n%s with %s" % (np.array(low_stats['Country_Region'])[row], f"{np.array(low_stats[stat_column])[row]:,.1f}")
+                    str = str + nstr
+
+                embed = discord.Embed(
+                    title="Worst and Best Countries, by %s" % stats_formatted[stat_column],
+                    colour=discord.Colour.blue(),
+                    description=str
+                )
+                await message.channel.send(embed=embed)
+
+        else:
+            embed = discord.Embed(
+                title="Choose a statistic to report".title(),
+                colour=discord.Colour.blue(),
+                description="""%s **Confirmed cases**"""
+                            "\n%s **Confirmed Deaths**"
+                            "\n%s **Case/Fatality Ratio**"
+                            "\n%s **Recovered Cases**"
+                            "\n%s **Active Cases**" 
+                            "\n%s **Total Tests**" % (reactions[0], reactions[1], reactions[2], reactions[3],
+                                                       reactions[4], reactions[5])
+            )
+
+            async with message.channel.typing():
+                auth = message.author
+                msg = await message.channel.send("**Global Statistics**", embed=embed)
+                for emoji in reactions:
+                    await msg.add_reaction(emoji)
+
+            reaction, user = await client.wait_for('reaction_add', timeout=60, check=lambda r, u: u == auth and
+                                                                                                  r.message.id == msg.id and r.emoji in reactions)
+            stat_column = stats_dict[reaction.emoji]
+            data = pd.read_csv(url, error_bad_lines=False)
+
+            data = data.groupby('Province_State')[['Confirmed', 'Deaths', 'Recovered', 'Active', 'Total_Test_Results']].sum().reset_index()
+            case_fatality = data["Deaths"] / data['Confirmed']
+            data['Case/Fatality Ratio'] = case_fatality
+            stats = data.nlargest(n=5, columns=stat_column)
+            low_stats = data.nsmallest(n=5, columns=stat_column)
+
+            async with message.channel.typing():
+                str = "Ranked by %s, the 5 countries with the highest statistic for this are:" % stats_formatted[stat_column]
+                for row in range(stats.shape[0]):
+                    nstr = "\n%s with %s" % (np.array(stats['Province_State'])[row], f"{np.array(stats[stat_column])[row]:,.1f}")
+                    str = str + nstr
+                str = str + "\n\nThe 5 countries with the lowest statistic for this are:"
+                for row in range(stats.shape[0]):
+                    nstr = "\n%s with %s" % (np.array(low_stats['Province_State'])[row], f"{np.array(low_stats[stat_column])[row]:,.1f}")
+                    str = str + nstr
+
+                embed = discord.Embed(
+                    title="Worst and Best Countries, by %s" % stats_formatted[stat_column],
+                    colour=discord.Colour.blue(),
+                    description=str
+                )
+                await message.channel.send(embed=embed)
+
+    except asyncio.TimeoutError:
+        async with message.channel.typing():
+            await message.channel.send("You didn't pick an option.")
 
     return True
-
 
 async def send_help(message):
     """Sends help information to the user"""

@@ -79,22 +79,24 @@ def main():
             if "report" in query_str:
                 auth = message.author
                 async with message.channel.typing():
-                    await message.channel.send("""I can give you a report of COVID-19 statistics for countries or """
-                                               "US states. \nIf you want to see a report for countries, type"
-                                               " 'countries.'"
-                                               "\nIf you want to see a report for US states, type 'states.'")
+                    await message.channel.send("I can give you a report of the countries currently doing the best"
+                                               " and worst in terms of daily cases and deaths. This report can also be "
+                                               "generated for US States and "
+                                               "Territories. \n\nIf you want a report at the global level, "
+                                               "type 'countries'. \nIf you want a report "
+                                               "for US states and territories, type 'states.'")
                 try:
-                    msg = await client.wait_for('message', timeout=60, check=lambda message: message.author == auth)
-                    if "countries" in msg.content.lower():
+                    msg = await client.wait_for('message', timeout=60, check=lambda mesg: message.author == auth)
+                    if 'countries' in msg.content.lower():
                         SENT = await mp.report(message=message, url=url_global_reports, glob=True, client=client)
-                    elif "states" in msg.content.lower():
+                    elif 'states' in msg.content.lower():
                         SENT = await mp.report(message=message, url=url_us_reports, glob=False, client=client)
                     else:
                         async with message.channel.typing():
-                            await message.channel.send("Invalid response. Try again.")
+                            await message.channel.send("Invalid response, please try again.")
                 except asyncio.TimeoutError:
                     async with message.channel.typing():
-                        await message.channel.send("You didn't enter anything.")
+                        await message.channel.send("You didn't enter anything")
 
             elif "location" in query_str:
                 auth = message.author
@@ -107,6 +109,7 @@ def main():
                 except asyncio.TimeoutError:
                     async with message.author.typing():
                         await message.author.send("You didn't enter anything.")
+
 
             elif "total" in query_str or "daily" in query_str:
                 if "us" in query_str:
